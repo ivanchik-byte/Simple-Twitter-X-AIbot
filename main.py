@@ -32,8 +32,34 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 bot_state = {
     "next_run_time": None,
     "last_run_time": None,
-    "posts_published": 0
+    "posts_published": 0,
+    "cooldown_until": None
 }
+
+POST_HISTORY_FILE = "post_history.json"
+
+def load_post_history() -> list:
+    if os.path.exists(POST_HISTORY_FILE):
+        try:
+            with open(POST_HISTORY_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading post history: {e}")
+    return []
+
+def add_to_history(text: str):
+    history = load_post_history()
+    entry = {
+        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "text": text
+    }
+    history.insert(0, entry)
+    history = history[:20]  # Keep last 20
+    try:
+        with open(POST_HISTORY_FILE, 'w') as f:
+            json.dump(history, f, indent=4)
+    except Exception as e:
+        logger.error(f"Error saving post history: {e}")
 
 def load_pending_posts() -> dict:
     if os.path.exists(PENDING_POSTS_FILE):
@@ -98,7 +124,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 <b>Welcome to AI Twitter Bot Control Panel</b>\n\n"
         f"🎯 Current Niche: <code>{niche}</code>\n"
         f"⚙️ Operating Mode: <code>{mode}</code>\n\n"
-        "Use the menu below to control the bot."
+        "Use the menu below to control the bot. Type /help to see all commands."
     )
     
     keyboard = [
@@ -108,6 +134,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(welcome_text, parse_mode='HTML', reply_markup=reply_markup)
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    help_text = (
+        "📖 <b>Available Commands:</b>\n"
+        "/status - View bot health and schedule\n"
+        "/parse (or /force) - Force an immediate news check\n"
+        "/queue - Show pending posts\n"
+        "/history - Show last published posts\n"
+        "/sources - Show current RSS/Reddit sources\n"
+        "/set_niche &lt;name&gt; - Change niche\n"
+        "/set_mode &lt;auto|manual&gt; - Change mode\n"
+        "/set_tone &lt;tone&gt; - Change tone of voice\n"
+        "/set_prompt &lt;text&gt; - Set custom LLM instructions\n"
+        "/set_interval &lt;time&gt; - Set post interval (e.g. 2h, 30m, 3600)\n"
+        "/set_notify &lt;time&gt; - Set notify before post (e.g. 1h, 0)\n"
+        "/add_rss &lt;url&gt; - Add RSS feed (manual mode)\n"
+        "/remove_rss &lt;url&gt; - Remove RSS feed\n"
+        "/add_sub &lt;name&gt; - Add subreddit (manual mode)\n"
+        "/remove_sub &lt;name&gt; - Add subreddit (manual mode)\n"
+        "/clear_sources - Clear discovered sources cache\n"
+        "/stop - Pause the bot\n"
+        "/noaccept - Toggle Auto Post mode\n"
+        "/help - Show this menu"
+    )
+    await update.message.reply_text(help_text, parse_mode='HTML')
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -119,11 +171,14 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     last_run = bot_state['last_run_time'].strftime("%Y-%m-%d %H:%M:%S") if bot_state['last_run_time'] else "Never"
     next_run = bot_state['next_run_time'].strftime("%Y-%m-%d %H:%M:%S") if bot_state['next_run_time'] else "Not scheduled"
     
+    cd = bot_state.get('cooldown_until')
+    cd_text = f"\n💤 Cooldown Until: <code>{cd.strftime('%Y-%m-%d %H:%M:%S')}</code>" if cd and cd > datetime.now() else ""
+    
     text = (
         "📊 <b>Bot Status</b>\n\n"
         f"🎯 Niche: <code>{niche}</code>\n"
         f"🕒 Last Check: <code>{last_run}</code>\n"
-        f"⏳ Next Check: <code>{next_run}</code>\n"
+        f"⏳ Next Check: <code>{next_run}</code>{cd_text}\n"
         f"✅ Posts Published (this session): <code>{bot_state['posts_published']}</code>\n"
         f"📦 Pending Approvals: <code>{len(pending_posts)}</code>"
     )
@@ -355,6 +410,19 @@ async def show_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(text, parse_mode='HTML')
 
+async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    history = load_post_history()
+    if not history:
+        await update.message.reply_text("📭 Post history is empty.")
+        return
+        
+    text = "📜 <b>Last 5 Published Posts:</b>\n\n"
+    for idx, item in enumerate(history[:5]):
+        text += f"🕒 <code>{item['time']}</code>\n📝 {item['text']}\n\n"
+        
+    await update.message.reply_text(text, parse_mode='HTML')
+
 async def scheduled_check(context: ContextTypes.DEFAULT_TYPE):
     await check_news(context, manual=False)
 
@@ -395,6 +463,13 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
 
     config = load_config()
     bot_config = config.get("bot", {})
+    
+    cd = bot_state.get('cooldown_until')
+    if not manual and cd and datetime.now() < cd:
+        logger.info(f"Bot is on cooldown until {cd}. Skipping check.")
+        schedule_next_check(context, config)
+        return
+        
     if not manual and not bot_config.get("active", True):
         logger.info("Bot is inactive. Skipping check.")
         schedule_next_check(context, config)
@@ -444,6 +519,11 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
                 success = await asyncio.to_thread(post_tweet, best_post['generated_tweet'], best_post.get('final_image_bytes'))
                 if success:
                     bot_state['posts_published'] += 1
+                    add_to_history(best_post['generated_tweet'])
+                    
+                    interval = bot_config.get("interval", 3600)
+                    bot_state['cooldown_until'] = datetime.now() + timedelta(seconds=interval)
+                    
                     await asyncio.to_thread(mark_posted, best_post['url'], best_post['source'])
                     await context.bot.send_message(chat_id=chat_id, text=f"✅ <b>Automatically Posted:</b>\n{best_post['title']}\n\n{best_post['generated_tweet']}", parse_mode='HTML')
                 else:
@@ -565,6 +645,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if success:
             caption = f"✅ <b>Posted to Twitter!</b>\n\n{post['generated_tweet']}"
             bot_state['posts_published'] += 1
+            add_to_history(post['generated_tweet'])
+            
+            config = load_config()
+            interval = config.get("bot", {}).get("interval", 3600)
+            bot_state['cooldown_until'] = datetime.now() + timedelta(seconds=interval)
+            
             await asyncio.to_thread(mark_posted, post['url'], post['source'])
             del pending_posts[url_key]
             save_pending_posts(pending_posts)
@@ -591,22 +677,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_posts[url_key] = post
         save_pending_posts(pending_posts)
         
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Approve", callback_data=f"app_{url_key}"),
-                InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}")
-            ],
-            [
-                InlineKeyboardButton("🔄 Rewrite", callback_data=f"rew_{url_key}"),
-                InlineKeyboardButton("⏸ Turn Off", callback_data=f"off_{url_key}")
-            ]
-        ]
-        
-        # If this was from the queue (it has pagination), preserve pagination buttons?
-        # That's slightly complex because we don't know the index here. We'll just drop pagination, they can do /queue again.
-        
-        caption = f"📰 <b>New Post:</b>\n{post['title']}\n\n📝 <b>Generated Tweet:</b>\n{new_text}"
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+            
+        await send_queue_item(context.bot, update.effective_chat.id, list(pending_posts.keys()).index(url_key))
+        return
             
     elif action == "off":
         update_config_value("active", False)
@@ -670,10 +747,12 @@ def main():
     application = ApplicationBuilder().token(token).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", start))
+    application.add_handler(CommandHandler("help", help_cmd))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("force", force_check))
     application.add_handler(CommandHandler("parse", force_check))
+    application.add_handler(CommandHandler("queue", show_queue))
+    application.add_handler(CommandHandler("history", show_history))
     application.add_handler(CommandHandler("set_niche", set_niche))
     application.add_handler(CommandHandler("set_mode", set_mode))
     application.add_handler(CommandHandler("set_tone", set_tone))

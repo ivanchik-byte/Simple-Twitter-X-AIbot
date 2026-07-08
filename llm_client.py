@@ -107,6 +107,16 @@ CRITICAL RULES:
 6. OUTPUT: ONLY output the final tweet text. No introductory phrases, no quotation marks around the tweet, no meta-commentary.
 """
     
+    if os.path.exists("post_history.json"):
+        try:
+            with open("post_history.json", 'r') as f:
+                history = json.load(f)
+                if history:
+                    recent = "\n".join([f"- {h['text']}" for h in history[:5]])
+                    base_instructions += f"\nCRITICAL: DO NOT REPEAT THESE RECENT TOPICS OR PHRASES:\n{recent}\n"
+        except Exception:
+            pass
+    
     if custom_prompt:
         base_instructions += f"\nADDITIONAL CUSTOM INSTRUCTIONS:\n{custom_prompt}\n"
         
