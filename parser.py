@@ -61,22 +61,39 @@ def fetch_rss(url: str, source_name: str) -> List[Dict]:
     return posts
 
 def fetch_subreddit(subreddit: str) -> List[Dict]:
-    url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=10"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+    url = f"https://www.reddit.com/r/{subreddit}/.rss?limit=10"
     posts = []
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0"
+    ]
+    import random
+    import time
+    headers = {"User-Agent": random.choice(user_agents)}
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 429:
+            logger.warning(f"Reddit 429 Rate Limit for {subreddit}. Sleeping 3s...")
+            time.sleep(3)
+            response = requests.get(url, headers=headers, timeout=10)
+            
         response.raise_for_status()
-        data = response.json()
-        for child in data.get("data", {}).get("children", []):
-            post_data = child.get("data", {})
-            link = "https://reddit.com" + post_data.get("permalink", "")
+        
+        feed = feedparser.parse(response.content)
+        for entry in feed.entries[:10]:
+            link = entry.link
             if not is_posted(link):
-                image_url = post_data.get("url_overridden_by_dest") if post_data.get("post_hint") == "image" else None
+                image_url = None
+                if 'media_thumbnail' in entry and len(entry.media_thumbnail) > 0:
+                    image_url = entry.media_thumbnail[0].get('url')
+                elif 'media_content' in entry and len(entry.media_content) > 0:
+                    image_url = entry.media_content[0].get('url')
+                
                 posts.append({
-                    "title": post_data.get("title", ""),
+                    "title": entry.title,
                     "url": link,
-                    "text": post_data.get("selftext", ""),
+                    "text": entry.summary,
                     "image_url": image_url,
                     "source": f"reddit_{subreddit}"
                 })
@@ -106,7 +123,19 @@ def get_new_posts() -> List[Dict]:
     for rss_url in sources.get("rss", []):
         new_posts.extend(fetch_rss(rss_url, "rss"))
         
+    import time
     for sub in sources.get("subreddits", []):
         new_posts.extend(fetch_subreddit(sub))
+        time.sleep(1.5) # Sleep between subreddits to avoid 429
         
+    if not new_posts:
+        logger.warning("No posts found from sources (possibly blocked or bad feeds). Using fallbacks...")
+        fallbacks = [
+            "https://cointelegraph.com/rss/tag/artificial-intelligence",
+            "https://www.artificialintelligence-news.com/feed/",
+            "https://dev.to/feed/tag/ai"
+        ]
+        for url in fallbacks:
+            new_posts.extend(fetch_rss(url, "fallback_rss"))
+            
     return new_posts
