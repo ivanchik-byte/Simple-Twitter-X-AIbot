@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import re
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from openai import OpenAI
 from config import load_config
 

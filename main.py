@@ -4,6 +4,7 @@ import random
 import json
 import hashlib
 import asyncio
+import yaml
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -16,7 +17,7 @@ from parser import get_new_posts, mark_posted
 from media_manager import process_media
 from llm_client import generate_tweet_text
 from twitter_client import post_tweet
-from config import load_config
+from config import load_config, CONFIG_PATH
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -75,7 +76,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚙️ Operating Mode: <code>{mode}</code>\n\n"
         "Available Commands:\n"
         "/status - View bot health and schedule\n"
-        "/force - Force an immediate news check\n"
+        "/parse (or /force) - Force an immediate news check\n"
+        "/queue - Show pending posts\n"
+        "/sources - Show current RSS/Reddit sources\n"
+        "/set_niche &lt;name&gt; - Change niche\n"
+        "/set_mode &lt;auto|manual&gt; - Change mode\n"
+        "/set_tone &lt;tone&gt; - Change tone of voice\n"
+        "/clear_sources - Clear discovered sources cache\n"
         "/help - Show this menu"
     )
     await update.message.reply_text(welcome_text, parse_mode='HTML')
@@ -106,6 +113,87 @@ async def force_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text("🔄 Forcing an immediate news check. This might take a minute...")
     await check_news(context, manual=True)
+
+async def update_config(update: Update, key: str, value: str):
+    if not is_admin(update): return
+    
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            cfg = yaml.safe_load(f) or {}
+            
+        if "bot" not in cfg:
+            cfg["bot"] = {}
+            
+        cfg["bot"][key] = value
+        
+        with open(CONFIG_PATH, 'w') as f:
+            yaml.dump(cfg, f, allow_unicode=True)
+            
+        load_config.cache_clear()
+        await update.message.reply_text(f"✅ Обновлено: `{key}` = `{value}`", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Error updating config: {e}")
+        await update.message.reply_text(f"❌ Ошибка обновления: {e}")
+
+async def set_niche(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: `/set_niche <название>`", parse_mode='Markdown')
+        return
+    await update_config(update, "niche", " ".join(context.args))
+
+async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args or context.args[0] not in ['auto', 'manual']:
+        await update.message.reply_text("Использование: `/set_mode auto` или `/set_mode manual`", parse_mode='Markdown')
+        return
+    await update_config(update, "mode", context.args[0])
+
+async def set_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: `/set_tone <описание>`", parse_mode='Markdown')
+        return
+    await update_config(update, "tone_of_voice", " ".join(context.args))
+
+async def clear_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    if os.path.exists("auto_sources.json"):
+        os.remove("auto_sources.json")
+        await update.message.reply_text("✅ Файл `auto_sources.json` удален. Бот найдет новые источники при следующем парсинге.", parse_mode='Markdown')
+    else:
+        await update.message.reply_text("ℹ️ Кэш источников пуст.", parse_mode='Markdown')
+
+async def show_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    if not pending_posts:
+        await update.message.reply_text("📭 Очередь постов пуста.")
+        return
+        
+    text = "📦 *Очередь постов:*\n\n"
+    for idx, (key, post) in enumerate(pending_posts.items(), 1):
+        text += f"{idx}. {post.get('title', 'Без заголовка')}\n"
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+async def show_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    
+    config = load_config()
+    mode = config.get("bot", {}).get("mode", "manual")
+    
+    sources = {"rss": [], "subreddits": []}
+    if mode == "auto":
+        if os.path.exists("auto_sources.json"):
+            try:
+                with open("auto_sources.json", "r") as f:
+                    sources = json.load(f)
+            except:
+                pass
+    else:
+        sources = config.get("sources", {})
+        
+    text = f"🔍 *Источники ({mode.upper()}):*\n\n"
+    text += "*RSS:*\n" + ("\n".join(f"- {s}" for s in sources.get("rss", [])) or "Нет") + "\n\n"
+    text += "*Subreddits:*\n" + ("\n".join(f"- {s}" for s in sources.get("subreddits", [])) or "Нет")
+    
+    await update.message.reply_text(text, parse_mode='Markdown')
 
 async def scheduled_check(context: ContextTypes.DEFAULT_TYPE):
     await check_news(context, manual=False)
@@ -287,6 +375,13 @@ def main():
     application.add_handler(CommandHandler("help", start))
     application.add_handler(CommandHandler("status", status))
     application.add_handler(CommandHandler("force", force_check))
+    application.add_handler(CommandHandler("parse", force_check))
+    application.add_handler(CommandHandler("set_niche", set_niche))
+    application.add_handler(CommandHandler("set_mode", set_mode))
+    application.add_handler(CommandHandler("set_tone", set_tone))
+    application.add_handler(CommandHandler("clear_sources", clear_sources))
+    application.add_handler(CommandHandler("queue", show_queue))
+    application.add_handler(CommandHandler("sources", show_sources))
     application.add_handler(CallbackQueryHandler(button_handler))
 
     bot_state['next_run_time'] = datetime.now() + timedelta(seconds=10)
