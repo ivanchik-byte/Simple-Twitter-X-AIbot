@@ -105,7 +105,7 @@ Your goal is to write a highly engaging, viral, and concise post based on the pr
 Tone of Voice: {tone}
 
 CRITICAL RULES:
-1. LENGTH LIMIT: The tweet text MUST be maximum 200 characters. DO NOT write more than 200 characters! DO NOT leave hanging sentences or end with '...'. Finish your thought naturally within the limit!
+1. LENGTH LIMIT: The tweet text MUST be around 200-240 characters. DO NOT leave hanging sentences or end with '...'. Finish your thought naturally!
 2. FORMATTING: Use X-style formatting. Keep paragraphs to 1-2 short sentences. Use line breaks for readability. Do not output a single wall of text.
 3. HOOK: Start with a powerful, scroll-stopping hook. Do not use cliché openings like "Breaking News:", "Did you know?", or "In a shocking turn of events".
 4. EMOJIS: Use a maximum of 1 or 2 relevant emojis. Do not overdo it.
@@ -152,15 +152,14 @@ CRITICAL RULES:
         tweet = re.sub(r'\_(.*?)\_', r'\1', tweet)
         tweet = tweet.replace('<br>', '\n').replace('<br/>', '\n')
         
-        # Enforce hard truncation if LLM ignores limits
-        if len(tweet) > 240:
-            # Try to truncate at the last sentence boundary
-            match = re.search(r'(?<=[.!?])\s+(?=[A-Z])', tweet[:240][::-1])
+        # Enforce strict text length before adding URL (max 250 to allow space for link)
+        if len(tweet) > 250:
+            match = re.search(r'(?s:.*)[.!?]', tweet[:250])
             if match:
-                tweet = tweet[:240 - match.start()].strip()
+                tweet = match.group(0)
             else:
-                tweet = tweet[:237] + "..."
-        
+                tweet = tweet[:247] + "..."
+                
         # Append Source URL if available
         url = post.get('url')
         if url:
