@@ -55,7 +55,7 @@ def discover_sources(niche: str) -> dict:
         f"{search_text_rss}\n\n"
         "Here are the search results for Subreddits:\n"
         f"{search_text_reddit}\n\n"
-        "Extract the top 3 most relevant and reliable RSS feed URLs and the top 3 Subreddit names (just the name, no 'r/').\n"
+        "Extract the top 5 most relevant and reliable RSS feed URLs and the top 5 Subreddit names (just the name, no 'r/').\n"
         "IMPORTANT: For RSS, ensure the URLs are direct links to raw XML feeds (e.g., ending in .xml, /feed, or /rss), NOT links to HTML articles *about* RSS feeds. If you can't find raw XML feed URLs in the text, guess standard feed endpoints for major sites mentioned (like appending /feed/ to their domain).\n"
         "Return ONLY a valid JSON object with keys 'rss' and 'subreddits' containing lists of strings."
     )

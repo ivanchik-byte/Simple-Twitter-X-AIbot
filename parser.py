@@ -40,7 +40,7 @@ def fetch_rss(url: str, source_name: str) -> List[Dict]:
     posts = []
     try:
         feed = feedparser.parse(url)
-        for entry in feed.entries[:5]:
+        for entry in feed.entries[:10]:
             link = entry.link
             if not is_posted(link):
                 image_url = None
@@ -61,7 +61,7 @@ def fetch_rss(url: str, source_name: str) -> List[Dict]:
     return posts
 
 def fetch_subreddit(subreddit: str) -> List[Dict]:
-    url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=5"
+    url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=10"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     posts = []
     try:
