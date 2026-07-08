@@ -80,12 +80,20 @@ def save_pending_posts(pending: dict):
 def parse_time(val: str) -> int:
     val = val.lower().strip()
     try:
-        if val.endswith('h'): return int(val[:-1]) * 3600
-        if val.endswith('m'): return int(val[:-1]) * 60
-        if val.endswith('s'): return int(val[:-1])
-        return int(val)
+        if val.endswith('h'): return int(float(val[:-1]) * 3600)
+        if val.endswith('m'): return int(float(val[:-1]) * 60)
+        if val.endswith('s'): return int(float(val[:-1]))
+        return int(float(val))
     except Exception:
         return -1
+
+def get_randomized_interval(bot_config: dict) -> int:
+    interval = bot_config.get("interval")
+    if isinstance(interval, list) and len(interval) == 2:
+        return random.randint(min(interval), max(interval))
+    elif isinstance(interval, int) and interval > 0:
+        return interval
+    return random.randint(5 * 3600, 8 * 3600)
 
 def update_config_value(key: str, value: any):
     try:
@@ -238,13 +246,22 @@ async def set_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_interval(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: <code>/set_interval &lt;time&gt;</code> (e.g., 1h, 2h, 3h)", parse_mode='HTML')
+        await update.message.reply_text("Usage: <code>/set_interval &lt;min_time&gt; [max_time]</code> (e.g., 1h 3h or 2h)", parse_mode='HTML')
         return
-    sec = parse_time(context.args[0])
-    if sec < 3600 or sec > 10800:
-        await update.message.reply_text("❌ Interval must be between 1h and 3h.", parse_mode='HTML')
-        return
-    await update_config(update, "interval", sec)
+        
+    if len(context.args) == 1:
+        sec = parse_time(context.args[0])
+        if sec <= 0:
+            await update.message.reply_text("❌ Invalid time format.", parse_mode='HTML')
+            return
+        await update_config(update, "interval", sec)
+    elif len(context.args) >= 2:
+        sec1 = parse_time(context.args[0])
+        sec2 = parse_time(context.args[1])
+        if sec1 <= 0 or sec2 <= 0:
+            await update.message.reply_text("❌ Invalid time format.", parse_mode='HTML')
+            return
+        await update_config(update, "interval", [min(sec1, sec2), max(sec1, sec2)])
 
 async def set_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -442,17 +459,15 @@ async def send_notification(context: ContextTypes.DEFAULT_TYPE):
 
 def schedule_next_check(context: ContextTypes.DEFAULT_TYPE, config: dict):
     bot_config = config.get("bot", {})
-    interval = bot_config.get("interval")
-    if not interval or interval <= 0:
-        interval = random.randint(5 * 3600, 8 * 3600)
+    interval_sec = get_randomized_interval(bot_config)
         
-    logger.info(f"Next check scheduled in {interval/3600:.2f} hours.")
-    bot_state['next_run_time'] = datetime.now() + timedelta(seconds=interval)
-    context.job_queue.run_once(scheduled_check, interval)
+    logger.info(f"Next check scheduled in {interval_sec/3600:.2f} hours.")
+    bot_state['next_run_time'] = datetime.now() + timedelta(seconds=interval_sec)
+    context.job_queue.run_once(scheduled_check, interval_sec)
     
     notify = bot_config.get("notify_before", 3600)
-    if notify > 0 and interval > notify:
-        notify_delay = interval - notify
+    if notify > 0 and interval_sec > notify:
+        notify_delay = interval_sec - notify
         context.job_queue.run_once(send_notification, notify_delay, data=notify)
 
 async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
@@ -521,8 +536,8 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
                     bot_state['posts_published'] += 1
                     add_to_history(best_post['generated_tweet'])
                     
-                    interval = bot_config.get("interval", 3600)
-                    bot_state['cooldown_until'] = datetime.now() + timedelta(seconds=interval)
+                    interval_sec = get_randomized_interval(bot_config)
+                    bot_state['cooldown_until'] = datetime.now() + timedelta(seconds=interval_sec)
                     
                     await asyncio.to_thread(mark_posted, best_post['url'], best_post['source'])
                     await context.bot.send_message(chat_id=chat_id, text=f"✅ <b>Automatically Posted:</b>\n{best_post['title']}\n\n{best_post['generated_tweet']}", parse_mode='HTML')
@@ -648,8 +663,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             add_to_history(post['generated_tweet'])
             
             config = load_config()
-            interval = config.get("bot", {}).get("interval", 3600)
-            bot_state['cooldown_until'] = datetime.now() + timedelta(seconds=interval)
+            interval_sec = get_randomized_interval(config.get("bot", {}))
+            bot_state['cooldown_until'] = datetime.now() + timedelta(seconds=interval_sec)
             
             await asyncio.to_thread(mark_posted, post['url'], post['source'])
             del pending_posts[url_key]
