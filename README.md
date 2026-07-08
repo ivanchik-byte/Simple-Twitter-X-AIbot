@@ -1,96 +1,113 @@
-# Simple Twitter AI Bot
+# Simple AI Twitter Bot
 
-An autonomous Python-based Twitter (X) bot that researches a specific niche, generates engaging tweets using large language models, and publishes them based on user approval via Telegram.
+An autonomous Python-based Twitter (X) bot that researches a specific niche, curates the best news, generates highly engaging tweets using Large Language Models, and publishes them. It acts as an elite ghostwriter, controllable entirely via a Telegram Bot interface.
 
-## Features
+## 🔥 Key Features
 
-- **Autonomous Research**: Automatically discovers the best RSS feeds and subreddits for your chosen niche.
-- **Bring Your Own AI**: Compatible with any OpenAI-compatible API (OpenAI, Anthropic via OpenRouter, DeepSeek, or local Ollama instances).
-- **Telegram Control Panel**: Review, approve, or reject generated tweets directly from Telegram before they are published.
-- **State Persistence**: Uses SQLite and local caching to ensure pending posts survive server restarts without data loss.
-- **Human-like Scheduling**: Randomizes checking intervals to mimic organic human activity on Twitter.
+- **🧠 Two-Stage LLM Pipeline:**
+  1. **Curation:** Parses dozens of RSS feeds and subreddits, filtering out ads, affiliate spam, and course-selling garbage. The LLM acts as an editor-in-chief, selecting only the SINGLE most viral and interesting post.
+  2. **Generation:** Writes a punchy, X-optimized tweet (under 250 chars) with hooks, proper formatting, and zero cliché hashtags. 
+- **🤖 Anti-Repetition Memory:** Maintains a `post_history.json` of the last published tweets and injects them into the LLM prompt. The bot *will not* repeat the same topics or phrases day after day.
+- **📱 Telegram Control Panel:** Manage everything from Telegram. Review posts via a Queue system, approve/reject them, or click "Rewrite" to instantly get a fresh take if you don't like the drafted tweet.
+- **🕒 Human-Like Scheduling & Cooldowns:** 
+  - Set randomized intervals (e.g., `/set_interval 1h 3h`). The bot will pick a random time between 1 and 3 hours to mimic organic human activity.
+  - After posting, the bot enters a strict **Standby/Cooldown mode** where it pauses all parsing to avoid API rate limits and save LLM tokens.
+- **⚡ Bring Your Own AI:** Compatible with any OpenAI-compatible API (OpenAI, Anthropic via OpenRouter, DeepSeek, or local Ollama instances).
+- **⚙️ Auto / Manual Modes:** Let the bot automatically discover RSS feeds and subreddits based on your Niche, or manually define your own strict list of sources.
+- **🚀 Auto-Post Mode:** Tired of manual approval? Toggle `/noaccept` to let the bot run fully autonomously, publishing the best news on its own schedule.
 
-## Prerequisites
+---
 
-- Python 3.9 or higher
-- A Twitter Developer account (with Consumer and Access tokens)
-- A Telegram Bot token (via BotFather) and your personal Telegram Chat ID
-- An API key from your preferred LLM provider (e.g., OpenAI, OpenRouter, NVIDIA)
-- A Google Gemini API Key (specifically used for understanding charts/images if they appear in news articles)
+## 🛠 Prerequisites
 
-## Installation
+- Python 3.9+
+- Twitter Developer Account (Consumer & Access tokens)
+- Telegram Bot Token (via BotFather) & your personal Telegram Chat ID
+- An API key from your preferred LLM provider (e.g., OpenAI, OpenRouter, NVIDIA, DeepSeek)
+- *(Optional)* Google Gemini API Key: Used purely for reading and understanding charts/images if they appear in news articles.
 
-1. Clone the repository:
+---
+
+## 🚀 Installation
+
+1. **Clone the repository:**
    ```bash
-   git clone git@github.com:ivanchik-byte/Simple-Twitter-AIbot.git
-   cd Simple-Twitter-AIbot
+   git clone git@github.com:ivanchik-byte/Simple-Twitter-X-AIbot.git
+   cd Simple-Twitter-X-AIbot
    ```
 
-2. Create a virtual environment and activate it:
+2. **Create a virtual environment:**
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. Install dependencies:
+3. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-## Configuration
+---
 
-1. **Environment Variables**:
-   Copy the example environment file and fill in your actual API keys.
+## ⚙️ Configuration
+
+1. **Environment Variables:**
+   Copy the example environment file:
    ```bash
    cp .env.example .env
    ```
-   Open `.env` in your text editor. Crucial variables:
-   - `LLM_API_KEY`: Your key for text generation (e.g. OpenAI, DeepSeek, etc.)
-   - `GEMINI_API_KEY`: Your key for Google Gemini (required for generating descriptions for charts/images).
+   Open `.env` and fill in:
+   - `LLM_API_KEY`: Your key for text generation.
+   - `GEMINI_API_KEY`: Your key for Gemini (for image parsing).
    - Twitter credentials (`TWITTER_CONSUMER_KEY`, etc.)
    - Telegram credentials (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
 
-2. **Bot Settings**:
-   Open `config.yaml` to configure the bot's behavior.
+2. **Bot Settings (`config.yaml`):**
    ```yaml
    bot:
      niche: "Artificial Intelligence"
      tone_of_voice: "Expert AI blogger, concise and professional"
      mode: "auto"
+     interval: [3600, 10800] # Random interval between 1h and 3h
 
    llm:
      base_url: "https://integrate.api.nvidia.com/v1"
      model_name: "deepseek-ai/deepseek-v4-pro"
-     # Optional provider-specific kwargs. Safe to delete if using OpenAI or other standards.
-     extra_body:
-       chat_template_kwargs:
-         thinking: False
    ```
-   - Set your `niche` and `tone_of_voice`.
-   - Set `mode` to `auto` to let the bot find its own sources, or `manual` to strictly use the sources defined in the file.
-   - Configure your LLM endpoint in the `llm` section. Change `base_url` and `model_name` as needed (e.g., `https://api.openai.com/v1` and `gpt-4o`).
+   - **Niche & Tone:** Define what the bot writes about and how it sounds.
+   - **Mode:** `auto` (auto-discovers sources) or `manual` (uses your defined sources).
+   - **LLM:** Set your `base_url` and `model_name` (e.g., `https://api.openai.com/v1` and `gpt-4o`).
 
-## Usage
+---
 
-Start the bot by running the main orchestrator:
+## 🎮 Telegram Commands & Usage
 
+Start the bot:
 ```bash
 python main.py
 ```
 
-Once running, open your Telegram bot. You can use the following commands:
-- `/start` or `/help` - Show the control panel and active settings.
-- `/status` - View bot health, pending posts, and the next scheduled run time.
-- `/force` - Force an immediate check for new news.
+Open your Telegram bot. You can use the built-in keyboard menu or the following commands:
 
-When the bot finds relevant news, it will send a drafted tweet to your Telegram chat. You can click "Approve" to publish it immediately or "Reject" to discard it.
+- `/start` or `/help` - Show the welcome menu and list of all commands.
+- `/status` - View bot health, cooldown timers, published stats, and schedule.
+- `/parse` (or `/force`) - Force an immediate search for breaking news.
+- `/queue` - View pending posts waiting for your approval.
+- `/history` - View the last 5 published tweets to see what the bot remembers.
+- `/noaccept` - Toggle Auto-Post mode (publish without manual approval).
+- `/set_interval <min> [max]` - Set checking intervals (e.g., `/set_interval 1h 3h`).
+- `/set_niche <name>` - Change the bot's target niche on the fly.
+- `/set_mode <auto|manual>` - Switch between automatic source discovery and manual sources.
+- `/set_tone <tone>` - Update the ghostwriter's tone of voice.
+- `/add_rss <url>` / `/add_sub <name>` - Add custom sources (for manual mode).
 
-## Architecture Notes
+---
 
-- **Asynchronous Execution**: Network and API calls are wrapped in asynchronous threads to prevent blocking the Telegram interface.
-- **Database**: SQLite is configured in Write-Ahead Logging (WAL) mode with connection pooling for safe concurrent access.
-- **Media Caching**: Temporary images from news articles are saved in the `images/` directory to survive application restarts, and are automatically cleaned up after you approve or reject a post.
+## 🏗 Architecture Notes
 
-## License
+- **Asynchronous & Thread-Safe:** LLM network calls and RSS parsing are wrapped in `asyncio.to_thread` to keep the Telegram polling interface instantly responsive.
+- **SQLite WAL:** The database tracks published URLs (to avoid duplicates) and uses Write-Ahead Logging for safe concurrent access.
+- **Fail-Safes:** Implements smart HTML escaping for Telegram limits, X (Twitter) character limit truncation (with sentence awareness), and Reddit 429 Rate Limit backoffs.
 
+## 📄 License
 MIT License
