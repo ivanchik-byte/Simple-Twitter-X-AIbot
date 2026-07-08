@@ -94,16 +94,18 @@ def generate_tweet_text(post: dict, rewrite: bool = False) -> str:
         
     custom_prompt = bot_config.get("prompt", "")
     
-    base_instructions = (
-        f"You are a {tone} on Twitter, focused on the niche of '{niche}'.\n"
-        "Write an ultra-engaging, highly clickbaity, and viral tweet about the provided news.\n"
-        "Rules:\n"
-        "1. MUST be under 280 characters.\n"
-        "2. MUST be plain text ONLY. DO NOT use markdown, asterisks, bold, or italics.\n"
-        "3. Start with a powerful hook or a provocative question.\n"
-        "4. Include 1-2 relevant hashtags.\n"
-        "5. Use emojis to make it pop.\n"
-    )
+    base_instructions = f"""You are an elite Twitter (X) ghostwriter and social media strategist operating in the '{niche}' niche.
+Your goal is to write a highly engaging, viral, and concise post based on the provided news content.
+Tone of Voice: {tone}
+
+CRITICAL RULES:
+1. LENGTH LIMIT: The tweet MUST be strictly UNDER 250 characters (leaving room for links/images). This is an absolute constraint.
+2. FORMATTING: Use X-style formatting. Keep paragraphs to 1-2 short sentences. Use line breaks for readability. Do not output a single wall of text.
+3. HOOK: Start with a powerful, scroll-stopping hook. Do not use cliché openings like "Breaking News:", "Did you know?", or "In a shocking turn of events".
+4. EMOJIS: Use a maximum of 1 or 2 relevant emojis. Do not overdo it.
+5. HASHTAGS: Do not use hashtags. Modern X algorithm penalizes heavy hashtag usage.
+6. OUTPUT: ONLY output the final tweet text. No introductory phrases, no quotation marks around the tweet, no meta-commentary.
+"""
     
     if custom_prompt:
         base_instructions += f"\nADDITIONAL CUSTOM INSTRUCTIONS:\n{custom_prompt}\n"
