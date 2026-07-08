@@ -64,7 +64,7 @@ def select_best_post(posts: List[Dict]) -> Optional[Dict]:
         
     return posts[0]
 
-def generate_tweet_text(post: dict) -> str:
+def generate_tweet_text(post: dict, rewrite: bool = False) -> str:
     config = load_config()
     llm_config = config.get("llm", {})
     base_url = llm_config.get("base_url", "https://integrate.api.nvidia.com/v1")
@@ -107,6 +107,9 @@ def generate_tweet_text(post: dict) -> str:
     
     if custom_prompt:
         base_instructions += f"\nADDITIONAL CUSTOM INSTRUCTIONS:\n{custom_prompt}\n"
+        
+    if rewrite:
+        base_instructions += "\nCRITICAL: You are REWRITING a previously generated tweet because the user rejected it. You MUST use a completely different hook, a different structure, and ensure it is extremely catchy and viral. Do not repeat the same text.\n"
         
     prompt = f"{base_instructions}\nNews Content:\n{content}"
     

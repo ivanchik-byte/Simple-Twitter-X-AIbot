@@ -112,9 +112,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/add_rss &lt;url&gt; - Add RSS feed (manual mode)\n"
         "/remove_rss &lt;url&gt; - Remove RSS feed\n"
         "/add_sub &lt;name&gt; - Add subreddit (manual mode)\n"
-        "/remove_sub &lt;name&gt; - Remove subreddit\n"
         "/clear_sources - Clear discovered sources cache\n"
         "/stop - Pause the bot\n"
+        "/noaccept - Toggle Auto Post mode\n"
         "/help - Show this menu"
     )
     await update.message.reply_text(welcome_text, parse_mode='HTML')
@@ -216,6 +216,17 @@ async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_config_value("active", False)
     await update.message.reply_text("⏸ <b>Bot Paused.</b> News checking suspended.", parse_mode='HTML')
 
+async def toggle_auto_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    config = load_config()
+    current = config.get("bot", {}).get("auto_post", False)
+    new_val = not current
+    update_config_value("auto_post", new_val)
+    if new_val:
+        await update.message.reply_text("✅ <b>Auto Post: ON</b> (No approval required)", parse_mode='HTML')
+    else:
+        await update.message.reply_text("❌ <b>Auto Post: OFF</b> (Manual approval required)", parse_mode='HTML')
+
 async def clear_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
     if os.path.exists("auto_sources.json"):
@@ -224,16 +235,50 @@ async def clear_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("ℹ️ Source cache is already empty.", parse_mode='HTML')
 
-async def show_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update): return
+async def send_queue_item(bot, chat_id, index: int):
     if not pending_posts:
-        await update.message.reply_text("📭 Post queue is empty.")
+        await bot.send_message(chat_id=chat_id, text="📭 Post queue is empty.")
         return
         
-    text = "📦 <b>Pending Posts:</b>\n\n"
-    for idx, (key, post) in enumerate(pending_posts.items(), 1):
-        text += f"{idx}. {post.get('title', 'No title')}\n"
-    await update.message.reply_text(text, parse_mode='HTML')
+    keys = list(pending_posts.keys())
+    if index < 0: index = len(keys) - 1
+    if index >= len(keys): index = 0
+    
+    url_key = keys[index]
+    post = pending_posts[url_key]
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Approve", callback_data=f"app_{url_key}"),
+            InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}")
+        ],
+        [
+            InlineKeyboardButton("🔄 Rewrite", callback_data=f"rew_{url_key}"),
+            InlineKeyboardButton("⏸ Turn Off", callback_data=f"off_{url_key}")
+        ],
+        [
+            InlineKeyboardButton("⬅️ Prev", callback_data=f"qpr_{index}"),
+            InlineKeyboardButton(f"{index + 1}/{len(keys)}", callback_data="noop"),
+            InlineKeyboardButton("Next ➡️", callback_data=f"qnx_{index}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    message_text = f"📰 <b>Queued Post:</b>\n{post['title']}\n\n📝 <b>Generated Tweet:</b>\n{post['generated_tweet']}"
+    
+    img_path = os.path.join(IMAGES_DIR, f"{url_key}.jpg")
+    if os.path.exists(img_path):
+        try:
+            with open(img_path, "rb") as img_file:
+                await bot.send_photo(chat_id=chat_id, photo=BytesIO(img_file.read()), caption=message_text, reply_markup=reply_markup, parse_mode='HTML')
+                return
+        except Exception as e:
+            logger.error(f"Error reading image: {e}")
+            
+    await bot.send_message(chat_id=chat_id, text=message_text, reply_markup=reply_markup, parse_mode='HTML')
+
+async def show_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    await send_queue_item(context.bot, update.effective_chat.id, 0)
 
 async def update_sources(update: Update, source_type: str, action: str, value: str):
     if not is_admin(update): return
@@ -370,12 +415,19 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
     
     try:
         posts = await asyncio.to_thread(get_new_posts)
-        if not posts:
+        
+        filtered_posts = []
+        for p in posts:
+            p_key = hashlib.sha256(p['url'].encode()).hexdigest()[:16]
+            if p_key not in pending_posts:
+                filtered_posts.append(p)
+                
+        if not filtered_posts:
             if manual:
                 await context.bot.send_message(chat_id=chat_id, text="ℹ️ No new unposted news found.")
         else:
-            logger.info(f"Selecting best post from {len(posts)} items...")
-            best_post = await asyncio.to_thread(select_best_post, posts)
+            logger.info(f"Selecting best post from {len(filtered_posts)} items...")
+            best_post = await asyncio.to_thread(select_best_post, filtered_posts)
             
             logger.info(f"Processing post: {best_post['title']}")
             
@@ -384,47 +436,62 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
             best_post['generated_tweet'] = tweet_text
             
             url_key = hashlib.sha256(best_post['url'].encode()).hexdigest()[:16]
+            img_path = os.path.join(IMAGES_DIR, f"{url_key}.jpg")
             
             if best_post.get('final_image_bytes'):
                 try:
-                    img_path = os.path.join(IMAGES_DIR, f"{url_key}.jpg")
                     with open(img_path, "wb") as img_file:
                         img_file.write(best_post['final_image_bytes'])
                 except Exception as e:
                     logger.error(f"Failed to save image for {url_key}: {e}")
             
-            post_for_json = best_post.copy()
-            if 'final_image_bytes' in post_for_json:
-                del post_for_json['final_image_bytes']
-            
-            pending_posts[url_key] = post_for_json
-            save_pending_posts(pending_posts)
-            
-            keyboard = [
-                [
-                    InlineKeyboardButton("✅ Approve", callback_data=f"app_{url_key}"),
-                    InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}"),
-                    InlineKeyboardButton("⏸ Turn Off", callback_data=f"off_{url_key}")
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message_text = f"📰 <b>New Post:</b>\n{best_post['title']}\n\n📝 <b>Generated Tweet:</b>\n{tweet_text}"
-            
-            if best_post.get('final_image_bytes'):
-                await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=BytesIO(best_post['final_image_bytes']),
-                    caption=message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
+            if bot_config.get("auto_post", False):
+                success = await asyncio.to_thread(post_tweet, best_post['generated_tweet'], best_post.get('final_image_bytes'))
+                if success:
+                    bot_state['posts_published'] += 1
+                    await asyncio.to_thread(mark_posted, best_post['url'], best_post['source'])
+                    await context.bot.send_message(chat_id=chat_id, text=f"✅ <b>Automatically Posted:</b>\n{best_post['title']}\n\n{best_post['generated_tweet']}", parse_mode='HTML')
+                else:
+                    await context.bot.send_message(chat_id=chat_id, text=f"⚠️ <b>Auto Post Failed:</b>\n{best_post['title']}", parse_mode='HTML')
+                
+                if 'final_image_bytes' in best_post and os.path.exists(img_path):
+                    os.remove(img_path)
             else:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=message_text,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
+                post_for_json = best_post.copy()
+                if 'final_image_bytes' in post_for_json:
+                    del post_for_json['final_image_bytes']
+                
+                pending_posts[url_key] = post_for_json
+                save_pending_posts(pending_posts)
+                
+                keyboard = [
+                    [
+                        InlineKeyboardButton("✅ Approve", callback_data=f"app_{url_key}"),
+                        InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}")
+                    ],
+                    [
+                        InlineKeyboardButton("🔄 Rewrite", callback_data=f"rew_{url_key}"),
+                        InlineKeyboardButton("⏸ Turn Off", callback_data=f"off_{url_key}")
+                    ]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                message_text = f"📰 <b>New Post:</b>\n{best_post['title']}\n\n📝 <b>Generated Tweet:</b>\n{tweet_text}"
+                
+                if best_post.get('final_image_bytes'):
+                    await context.bot.send_photo(
+                        chat_id=chat_id,
+                        photo=BytesIO(best_post['final_image_bytes']),
+                        caption=message_text,
+                        reply_markup=reply_markup,
+                        parse_mode='HTML'
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=message_text,
+                        reply_markup=reply_markup,
+                        parse_mode='HTML'
+                    )
     except Exception as e:
         logger.error(f"Error during check_news: {e}")
         if manual:
@@ -451,6 +518,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url_key = data[4:]
     success = None
     
+    post = None
+    if action in ["qpr", "qnx"]:
+        try:
+            idx = int(url_key)
+            if action == "qpr": idx -= 1
+            if action == "qnx": idx += 1
+            await query.message.delete()
+            await send_queue_item(context.bot, update.effective_chat.id, idx)
+        except Exception as e:
+            logger.error(f"Error paginating queue: {e}")
+        return
+        
     post = pending_posts.get(url_key)
     
     if not post:
@@ -499,6 +578,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         context.job_queue.run_once(trigger_manual_check, 1)
             
+    elif action == "rew":
+        await query.answer("Rewriting tweet...")
+        new_text = await asyncio.to_thread(generate_tweet_text, post, rewrite=True)
+        post['generated_tweet'] = new_text
+        pending_posts[url_key] = post
+        save_pending_posts(pending_posts)
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Approve", callback_data=f"app_{url_key}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}")
+            ],
+            [
+                InlineKeyboardButton("🔄 Rewrite", callback_data=f"rew_{url_key}"),
+                InlineKeyboardButton("⏸ Turn Off", callback_data=f"off_{url_key}")
+            ]
+        ]
+        
+        # If this was from the queue (it has pagination), preserve pagination buttons?
+        # That's slightly complex because we don't know the index here. We'll just drop pagination, they can do /queue again.
+        
+        caption = f"📰 <b>New Post:</b>\n{post['title']}\n\n📝 <b>Generated Tweet:</b>\n{new_text}"
+        reply_markup = InlineKeyboardMarkup(keyboard)
+            
     elif action == "off":
         update_config_value("active", False)
         caption = f"⏸ <b>Bot Paused</b>\n\n{post['generated_tweet']}"
@@ -545,6 +648,7 @@ def main():
     application.add_handler(CommandHandler("set_interval", set_interval))
     application.add_handler(CommandHandler("set_notify", set_notify))
     application.add_handler(CommandHandler("stop", stop_bot))
+    application.add_handler(CommandHandler("noaccept", toggle_auto_post))
     application.add_handler(CommandHandler("add_rss", add_rss))
     application.add_handler(CommandHandler("remove_rss", remove_rss))
     application.add_handler(CommandHandler("add_sub", add_sub))
