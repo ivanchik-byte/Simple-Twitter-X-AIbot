@@ -7,8 +7,8 @@ import asyncio
 import yaml
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from io import BytesIO
 
 load_dotenv()
@@ -98,26 +98,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 <b>Welcome to AI Twitter Bot Control Panel</b>\n\n"
         f"🎯 Current Niche: <code>{niche}</code>\n"
         f"⚙️ Operating Mode: <code>{mode}</code>\n\n"
-        "Available Commands:\n"
-        "/status - View bot health and schedule\n"
-        "/parse (or /force) - Force an immediate news check\n"
-        "/queue - Show pending posts\n"
-        "/sources - Show current RSS/Reddit sources\n"
-        "/set_niche &lt;name&gt; - Change niche\n"
-        "/set_mode &lt;auto|manual&gt; - Change mode\n"
-        "/set_tone &lt;tone&gt; - Change tone of voice\n"
-        "/set_prompt &lt;text&gt; - Set custom LLM instructions\n"
-        "/set_interval &lt;time&gt; - Set post interval (e.g. 2h, 30m, 3600)\n"
-        "/set_notify &lt;time&gt; - Set notify before post (e.g. 1h, 0)\n"
-        "/add_rss &lt;url&gt; - Add RSS feed (manual mode)\n"
-        "/remove_rss &lt;url&gt; - Remove RSS feed\n"
-        "/add_sub &lt;name&gt; - Add subreddit (manual mode)\n"
-        "/clear_sources - Clear discovered sources cache\n"
-        "/stop - Pause the bot\n"
-        "/noaccept - Toggle Auto Post mode\n"
-        "/help - Show this menu"
+        "Use the menu below to control the bot."
     )
-    await update.message.reply_text(welcome_text, parse_mode='HTML')
+    
+    keyboard = [
+        ["🔍 Find News", "📦 My Queue"],
+        ["⏯ Pause / Start", "🤖 Auto-Post: ON/OFF"],
+        ["⚙️ Settings"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text(welcome_text, parse_mode='HTML', reply_markup=reply_markup)
 
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -409,6 +399,11 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
         logger.info("Bot is inactive. Skipping check.")
         schedule_next_check(context, config)
         return
+        
+    if not manual and len(pending_posts) >= bot_config.get("queue_limit", 3):
+        logger.info("Queue limit reached (3). Skipping check.")
+        schedule_next_check(context, config)
+        return
 
     logger.info("Checking for new posts...")
     bot_state['last_run_time'] = datetime.now()
@@ -510,6 +505,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
+    if data.startswith("set_"):
+        if data == "set_prompt":
+            await query.message.reply_text("To change the prompt, use command:\n<code>/set_prompt &lt;your_new_prompt&gt;</code>", parse_mode='HTML')
+        elif data == "set_interval":
+            await query.message.reply_text("To change the interval, use command:\n<code>/set_interval &lt;time&gt;</code> (e.g. 2h, 30m)", parse_mode='HTML')
+        elif data == "set_niche":
+            await query.message.reply_text("To change the niche, use command:\n<code>/set_niche &lt;new_niche&gt;</code>", parse_mode='HTML')
+        elif data == "set_mode":
+            await query.message.reply_text("To change the mode, use command:\n<code>/set_mode auto</code> or <code>/set_mode manual</code>", parse_mode='HTML')
+        return
+        
     if len(data) < 5 or data[3] != '_':
         await query.answer("Invalid action data format.", show_alert=True)
         return
@@ -628,6 +634,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error editing message post-action: {e}")
 
+async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update): return
+    text = update.message.text
+    
+    if text == "🔍 Find News":
+        await force_check(update, context)
+    elif text == "📦 My Queue":
+        await show_queue(update, context)
+    elif text == "⏯ Pause / Start":
+        config = load_config()
+        active = config.get("bot", {}).get("active", True)
+        update_config_value("active", not active)
+        if not active:
+            await update.message.reply_text("▶️ <b>Bot Resumed.</b>", parse_mode='HTML')
+            context.job_queue.run_once(trigger_manual_check, 1)
+        else:
+            await update.message.reply_text("⏸ <b>Bot Paused.</b>", parse_mode='HTML')
+    elif text == "🤖 Auto-Post: ON/OFF":
+        await toggle_auto_post(update, context)
+    elif text == "⚙️ Settings":
+        keyboard = [
+            [InlineKeyboardButton("📝 Edit Prompt", callback_data="set_prompt"), InlineKeyboardButton("⏱ Interval", callback_data="set_interval")],
+            [InlineKeyboardButton("🎯 Edit Niche", callback_data="set_niche"), InlineKeyboardButton("🤖 Toggle Mode", callback_data="set_mode")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("⚙️ <b>Settings Panel</b>\nChoose an option to configure or use commands (/add_rss, /remove_rss):", reply_markup=reply_markup, parse_mode='HTML')
+
 def main():
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -657,6 +690,7 @@ def main():
     application.add_handler(CommandHandler("queue", show_queue))
     application.add_handler(CommandHandler("sources", show_sources))
     application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_buttons))
 
     bot_state['next_run_time'] = datetime.now() + timedelta(seconds=10)
     job_queue = application.job_queue
