@@ -52,7 +52,7 @@ def fetch_rss(url: str, source_name: str) -> List[Dict]:
                 posts.append({
                     "title": entry.title,
                     "url": link,
-                    "text": entry.summary,
+                    "text": getattr(entry, 'summary', getattr(entry, 'description', '')),
                     "image_url": image_url,
                     "source": source_name
                 })
@@ -93,7 +93,7 @@ def fetch_subreddit(subreddit: str) -> List[Dict]:
                 posts.append({
                     "title": entry.title,
                     "url": link,
-                    "text": entry.summary,
+                    "text": getattr(entry, 'summary', getattr(entry, 'description', '')),
                     "image_url": image_url,
                     "source": f"reddit_{subreddit}"
                 })

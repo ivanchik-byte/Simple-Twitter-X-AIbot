@@ -150,6 +150,7 @@ CRITICAL RULES:
         tweet = re.sub(r'\*\*(.*?)\*\*', r'\1', tweet)
         tweet = re.sub(r'\*(.*?)\*', r'\1', tweet)
         tweet = re.sub(r'\_(.*?)\_', r'\1', tweet)
+        tweet = tweet.replace('<br>', '\n').replace('<br/>', '\n')
         
         # Append Source URL if available
         url = post.get('url')

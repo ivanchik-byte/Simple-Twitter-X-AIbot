@@ -153,7 +153,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/add_rss &lt;url&gt; - Add RSS feed (manual mode)\n"
         "/remove_rss &lt;url&gt; - Remove RSS feed\n"
         "/add_sub &lt;name&gt; - Add subreddit (manual mode)\n"
-        "/remove_sub &lt;name&gt; - Add subreddit (manual mode)\n"
+        "/remove_sub &lt;name&gt; - Remove subreddit (manual mode)\n"
         "/clear_sources - Clear discovered sources cache\n"
         "/stop - Pause the bot\n"
         "/noaccept - Toggle Auto Post mode\n"
@@ -238,11 +238,11 @@ async def set_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_interval(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: <code>/set_interval &lt;time&gt;</code> (e.g., 2h, 30m, 3600)", parse_mode='HTML')
+        await update.message.reply_text("Usage: <code>/set_interval &lt;time&gt;</code> (e.g., 1h, 2h, 3h)", parse_mode='HTML')
         return
     sec = parse_time(context.args[0])
-    if sec <= 0:
-        await update.message.reply_text("❌ Invalid time format.", parse_mode='HTML')
+    if sec < 3600 or sec > 10800:
+        await update.message.reply_text("❌ Interval must be between 1h and 3h.", parse_mode='HTML')
         return
     await update_config(update, "interval", sec)
 
