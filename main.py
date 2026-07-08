@@ -5,6 +5,7 @@ import json
 import hashlib
 import asyncio
 import yaml
+import html
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
@@ -325,7 +326,10 @@ async def send_queue_item(bot, chat_id, index: int):
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    message_text = f"📰 <b>Queued Post:</b>\n{post['title']}\n\n📝 <b>Generated Tweet:</b>\n{post['generated_tweet']}"
+    
+    safe_title = html.escape(post.get('title', ''))
+    safe_tweet = html.escape(post.get('generated_tweet', ''))
+    message_text = f"📰 <b>Queued Post:</b>\n{safe_title}\n\n📝 <b>Generated Tweet:</b>\n{safe_tweet}"
     
     img_path = os.path.join(IMAGES_DIR, f"{url_key}.jpg")
     if os.path.exists(img_path):
@@ -540,9 +544,13 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
                     bot_state['cooldown_until'] = datetime.now() + timedelta(seconds=interval_sec)
                     
                     await asyncio.to_thread(mark_posted, best_post['url'], best_post['source'])
-                    await context.bot.send_message(chat_id=chat_id, text=f"✅ <b>Automatically Posted:</b>\n{best_post['title']}\n\n{best_post['generated_tweet']}", parse_mode='HTML')
+                    
+                    safe_title = html.escape(best_post.get('title', ''))
+                    safe_tweet = html.escape(best_post.get('generated_tweet', ''))
+                    await context.bot.send_message(chat_id=chat_id, text=f"✅ <b>Automatically Posted:</b>\n{safe_title}\n\n{safe_tweet}", parse_mode='HTML')
                 else:
-                    await context.bot.send_message(chat_id=chat_id, text=f"⚠️ <b>Auto Post Failed:</b>\n{best_post['title']}", parse_mode='HTML')
+                    safe_title = html.escape(best_post.get('title', ''))
+                    await context.bot.send_message(chat_id=chat_id, text=f"❌ <b>Auto-Post Failed:</b>\n{safe_title}", parse_mode='HTML')
                 
                 if 'final_image_bytes' in best_post and os.path.exists(img_path):
                     os.remove(img_path)
@@ -658,7 +666,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         success = await asyncio.to_thread(post_tweet, post['generated_tweet'], image_bytes)
         
         if success:
-            caption = f"✅ <b>Posted to Twitter!</b>\n\n{post['generated_tweet']}"
+            safe_tweet = html.escape(post.get('generated_tweet', ''))
+            caption = f"✅ <b>Posted to Twitter!</b>\n\n{safe_tweet}"
             bot_state['posts_published'] += 1
             add_to_history(post['generated_tweet'])
             
