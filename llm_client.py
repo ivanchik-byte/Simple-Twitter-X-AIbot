@@ -35,7 +35,13 @@ def select_best_post(posts: List[Dict]) -> Optional[Dict]:
         f"You are an expert content curator for a highly engaging Twitter account in the niche of '{niche}'.\n"
         "Here are several news items I have fetched:\n\n"
         f"{posts_text}\n"
-        "Your task is to select the SINGLE MOST interesting, viral, and engaging news item that people would desperately want to read. "
+        "Your task is to select the SINGLE MOST interesting, viral, and engaging news item that people would desperately want to read.\n\n"
+        "CRITICAL FILTERING RULES:\n"
+        "You MUST absolutely IGNORE and DISCARD any posts that look like:\n"
+        "- Advertisements or sponsored posts\n"
+        "- Affiliate marketing or referral links\n"
+        "- 'How I made $X' stories or course selling\n"
+        "- Self-promotion or spam\n\n"
         "Return ONLY a valid JSON object with a single key 'best_id' whose value is the integer ID of the chosen post. Do not include any other text."
     )
     
@@ -99,11 +105,11 @@ Your goal is to write a highly engaging, viral, and concise post based on the pr
 Tone of Voice: {tone}
 
 CRITICAL RULES:
-1. LENGTH LIMIT: The tweet MUST be strictly UNDER 250 characters (leaving room for links/images). This is an absolute constraint.
+1. LENGTH LIMIT: The tweet text MUST be around 200-240 characters. DO NOT leave hanging sentences or end with '...'. Finish your thought naturally!
 2. FORMATTING: Use X-style formatting. Keep paragraphs to 1-2 short sentences. Use line breaks for readability. Do not output a single wall of text.
 3. HOOK: Start with a powerful, scroll-stopping hook. Do not use cliché openings like "Breaking News:", "Did you know?", or "In a shocking turn of events".
 4. EMOJIS: Use a maximum of 1 or 2 relevant emojis. Do not overdo it.
-5. HASHTAGS: Do not use hashtags. Modern X algorithm penalizes heavy hashtag usage.
+5. NO HASHTAGS & NO LINKS: Do not use hashtags. Do NOT include any URLs or links in your text (they will be added automatically later).
 6. OUTPUT: ONLY output the final tweet text. No introductory phrases, no quotation marks around the tweet, no meta-commentary.
 """
     
@@ -145,8 +151,11 @@ CRITICAL RULES:
         tweet = re.sub(r'\*(.*?)\*', r'\1', tweet)
         tweet = re.sub(r'\_(.*?)\_', r'\1', tweet)
         
-        if len(tweet) > 280:
-            tweet = tweet[:277] + "..."
+        # Append Source URL if available
+        url = post.get('url')
+        if url:
+            tweet = f"{tweet}\n\n{url}"
+            
         return tweet
     except Exception as e:
         logger.error(f"Error generating tweet with DeepSeek: {e}")
