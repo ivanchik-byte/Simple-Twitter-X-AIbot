@@ -62,7 +62,7 @@ def fetch_rss(url: str, source_name: str) -> List[Dict]:
 
 def fetch_subreddit(subreddit: str) -> List[Dict]:
     url = f"https://www.reddit.com/r/{subreddit}/new.json?limit=5"
-    headers = {"User-Agent": "python:ai_twitter_bot:v3.0 (by /u/YOUR_REDDIT_USERNAME)"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     posts = []
     try:
         response = requests.get(url, headers=headers)
