@@ -82,6 +82,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/set_niche &lt;name&gt; - Change niche\n"
         "/set_mode &lt;auto|manual&gt; - Change mode\n"
         "/set_tone &lt;tone&gt; - Change tone of voice\n"
+        "/add_rss &lt;url&gt; - Add RSS feed (manual mode)\n"
+        "/remove_rss &lt;url&gt; - Remove RSS feed\n"
+        "/add_sub &lt;name&gt; - Add subreddit (manual mode)\n"
+        "/remove_sub &lt;name&gt; - Remove subreddit\n"
         "/clear_sources - Clear discovered sources cache\n"
         "/help - Show this menu"
     )
@@ -130,26 +134,26 @@ async def update_config(update: Update, key: str, value: str):
             yaml.dump(cfg, f, allow_unicode=True)
             
         load_config.cache_clear()
-        await update.message.reply_text(f"✅ Обновлено: `{key}` = `{value}`", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ <b>Updated:</b> <code>{key}</code> = <code>{value}</code>", parse_mode='HTML')
     except Exception as e:
         logger.error(f"Error updating config: {e}")
-        await update.message.reply_text(f"❌ Ошибка обновления: {e}")
+        await update.message.reply_text(f"❌ <b>Error updating config:</b> {e}", parse_mode='HTML')
 
 async def set_niche(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Использование: `/set_niche <название>`", parse_mode='Markdown')
+        await update.message.reply_text("Usage: <code>/set_niche &lt;name&gt;</code>", parse_mode='HTML')
         return
     await update_config(update, "niche", " ".join(context.args))
 
 async def set_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or context.args[0] not in ['auto', 'manual']:
-        await update.message.reply_text("Использование: `/set_mode auto` или `/set_mode manual`", parse_mode='Markdown')
+        await update.message.reply_text("Usage: <code>/set_mode auto</code> or <code>/set_mode manual</code>", parse_mode='HTML')
         return
     await update_config(update, "mode", context.args[0])
 
 async def set_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Использование: `/set_tone <описание>`", parse_mode='Markdown')
+        await update.message.reply_text("Usage: <code>/set_tone &lt;description&gt;</code>", parse_mode='HTML')
         return
     await update_config(update, "tone_of_voice", " ".join(context.args))
 
@@ -157,20 +161,80 @@ async def clear_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
     if os.path.exists("auto_sources.json"):
         os.remove("auto_sources.json")
-        await update.message.reply_text("✅ Файл `auto_sources.json` удален. Бот найдет новые источники при следующем парсинге.", parse_mode='Markdown')
+        await update.message.reply_text("✅ <b>Cache cleared.</b> The bot will discover new sources on the next run.", parse_mode='HTML')
     else:
-        await update.message.reply_text("ℹ️ Кэш источников пуст.", parse_mode='Markdown')
+        await update.message.reply_text("ℹ️ Source cache is already empty.", parse_mode='HTML')
 
 async def show_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
     if not pending_posts:
-        await update.message.reply_text("📭 Очередь постов пуста.")
+        await update.message.reply_text("📭 Post queue is empty.")
         return
         
-    text = "📦 *Очередь постов:*\n\n"
+    text = "📦 <b>Pending Posts:</b>\n\n"
     for idx, (key, post) in enumerate(pending_posts.items(), 1):
-        text += f"{idx}. {post.get('title', 'Без заголовка')}\n"
-    await update.message.reply_text(text, parse_mode='Markdown')
+        text += f"{idx}. {post.get('title', 'No title')}\n"
+    await update.message.reply_text(text, parse_mode='HTML')
+
+async def update_sources(update: Update, source_type: str, action: str, value: str):
+    if not is_admin(update): return
+    
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            cfg = yaml.safe_load(f) or {}
+            
+        if "sources" not in cfg:
+            cfg["sources"] = {"rss": [], "subreddits": []}
+            
+        sources_list = cfg["sources"].get(source_type, [])
+        
+        if action == "add":
+            if value not in sources_list:
+                sources_list.append(value)
+                msg = f"✅ Added to {source_type}: <code>{value}</code>"
+            else:
+                msg = f"ℹ️ Already exists in {source_type}: <code>{value}</code>"
+        elif action == "remove":
+            if value in sources_list:
+                sources_list.remove(value)
+                msg = f"✅ Removed from {source_type}: <code>{value}</code>"
+            else:
+                msg = f"⚠️ Not found in {source_type}: <code>{value}</code>"
+                
+        cfg["sources"][source_type] = sources_list
+        
+        with open(CONFIG_PATH, 'w') as f:
+            yaml.dump(cfg, f, allow_unicode=True)
+            
+        load_config.cache_clear()
+        await update.message.reply_text(msg, parse_mode='HTML')
+    except Exception as e:
+        logger.error(f"Error updating sources: {e}")
+        await update.message.reply_text(f"❌ <b>Error:</b> {e}", parse_mode='HTML')
+
+async def add_rss(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: <code>/add_rss &lt;url&gt;</code>", parse_mode='HTML')
+        return
+    await update_sources(update, "rss", "add", context.args[0])
+
+async def remove_rss(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: <code>/remove_rss &lt;url&gt;</code>", parse_mode='HTML')
+        return
+    await update_sources(update, "rss", "remove", context.args[0])
+
+async def add_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: <code>/add_sub &lt;name&gt;</code>", parse_mode='HTML')
+        return
+    await update_sources(update, "subreddits", "add", context.args[0])
+
+async def remove_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: <code>/remove_sub &lt;name&gt;</code>", parse_mode='HTML')
+        return
+    await update_sources(update, "subreddits", "remove", context.args[0])
 
 async def show_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
@@ -189,11 +253,11 @@ async def show_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         sources = config.get("sources", {})
         
-    text = f"🔍 *Источники ({mode.upper()}):*\n\n"
-    text += "*RSS:*\n" + ("\n".join(f"- {s}" for s in sources.get("rss", [])) or "Нет") + "\n\n"
-    text += "*Subreddits:*\n" + ("\n".join(f"- {s}" for s in sources.get("subreddits", [])) or "Нет")
+    text = f"🔍 <b>Current Sources ({mode.upper()}):</b>\n\n"
+    text += "<b>RSS:</b>\n" + ("\n".join(f"- {s}" for s in sources.get("rss", [])) or "None") + "\n\n"
+    text += "<b>Subreddits:</b>\n" + ("\n".join(f"- {s}" for s in sources.get("subreddits", [])) or "None")
     
-    await update.message.reply_text(text, parse_mode='Markdown')
+    await update.message.reply_text(text, parse_mode='HTML')
 
 async def scheduled_check(context: ContextTypes.DEFAULT_TYPE):
     await check_news(context, manual=False)
@@ -379,6 +443,10 @@ def main():
     application.add_handler(CommandHandler("set_niche", set_niche))
     application.add_handler(CommandHandler("set_mode", set_mode))
     application.add_handler(CommandHandler("set_tone", set_tone))
+    application.add_handler(CommandHandler("add_rss", add_rss))
+    application.add_handler(CommandHandler("remove_rss", remove_rss))
+    application.add_handler(CommandHandler("add_sub", add_sub))
+    application.add_handler(CommandHandler("remove_sub", remove_sub))
     application.add_handler(CommandHandler("clear_sources", clear_sources))
     application.add_handler(CommandHandler("queue", show_queue))
     application.add_handler(CommandHandler("sources", show_sources))
