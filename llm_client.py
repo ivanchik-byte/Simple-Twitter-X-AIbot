@@ -105,7 +105,7 @@ Your goal is to write a highly engaging, viral, and concise post based on the pr
 Tone of Voice: {tone}
 
 CRITICAL RULES:
-1. LENGTH LIMIT: The tweet text MUST be around 200-240 characters. DO NOT leave hanging sentences or end with '...'. Finish your thought naturally!
+1. LENGTH LIMIT: Write a highly detailed and comprehensive post maximizing the available space. Aim for exactly 250-260 characters! DO NOT leave hanging sentences. Finish your thought naturally!
 2. FORMATTING: Use X-style formatting. Keep paragraphs to 1-2 short sentences. Use line breaks for readability. Do not output a single wall of text.
 3. HOOK: Start with a powerful, scroll-stopping hook. Do not use cliché openings like "Breaking News:", "Did you know?", or "In a shocking turn of events".
 4. EMOJIS: Use a maximum of 1 or 2 relevant emojis. Do not overdo it.
@@ -152,13 +152,14 @@ CRITICAL RULES:
         tweet = re.sub(r'\_(.*?)\_', r'\1', tweet)
         tweet = tweet.replace('<br>', '\n').replace('<br/>', '\n')
         
-        # Enforce strict text length before adding URL (max 250 to allow space for link)
-        if len(tweet) > 250:
-            match = re.search(r'(?s:.*)[.!?]', tweet[:250])
-            if match:
+        # Enforce strict text length before adding URL (max 257 to allow space for 23-char link)
+        if len(tweet) > 257:
+            match = re.search(r'(?s:.*)[.!?]', tweet[:257])
+            # If truncating by sentence loses too much text (e.g. > 40 chars), fallback to word truncation
+            if match and len(match.group(0)) > 215:
                 tweet = match.group(0)
             else:
-                tweet = tweet[:247] + "..."
+                tweet = tweet[:254].rsplit(' ', 1)[0] + "..."
                 
         # Append Source URL if available
         url = post.get('url')
@@ -168,4 +169,8 @@ CRITICAL RULES:
         return tweet
     except Exception as e:
         logger.error(f"Error generating tweet with DeepSeek: {e}")
-        return f"{title} #{niche.replace(' ', '')}"
+        fallback = f"{title} #{niche.replace(' ', '')}"
+        url = post.get('url')
+        if url:
+            fallback = f"{fallback}\n\n{url}"
+        return fallback
