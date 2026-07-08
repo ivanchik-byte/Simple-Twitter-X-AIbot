@@ -169,7 +169,7 @@ CRITICAL RULES:
         return tweet
     except Exception as e:
         logger.error(f"Error generating tweet with DeepSeek: {e}")
-        fallback = f"{title} #{niche.replace(' ', '')}"
+        fallback = f"⚠️ <b>LLM API Error:</b>\n{str(e)}\n\n<i>The LLM provider failed to generate text (check limits/keys).</i>\n\nTitle: {title}"
         url = post.get('url')
         if url:
             fallback = f"{fallback}\n\n{url}"
