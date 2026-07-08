@@ -58,7 +58,7 @@ def parse_time(val: str) -> int:
         if val.endswith('m'): return int(val[:-1]) * 60
         if val.endswith('s'): return int(val[:-1])
         return int(val)
-    except:
+    except Exception:
         return -1
 
 def update_config_value(key: str, value: any):
