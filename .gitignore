@@ -20,6 +20,11 @@ auto_sources.json
 pending_posts.json
 images/
 
+# Test files
+tests/
+.pytest_cache/
+pyproject.toml
+
 # OS generated files
 .DS_Store
 Thumbs.db

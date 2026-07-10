@@ -1,18 +1,19 @@
 bot:
-  niche: "Artificial Intelligence"
-  tone_of_voice: "Expert AI blogger, concise and professional"
-  # mode can be 'auto' (AI finds sources via DuckDuckGo) or 'manual' (reads from 'sources' below)
-  mode: "auto"
-
+  active: false
+  interval:
+  - 10800
+  - 21600
+  mode: auto
+  niche: Artificial Intelligence
+  tone_of_voice: Expert AI blogger, concise and professional
 llm:
-  base_url: "https://integrate.api.nvidia.com/v1"
-  model_name: "deepseek-ai/deepseek-v4-pro"
+  base_url: https://integrate.api.nvidia.com/v1
   extra_body:
     chat_template_kwargs:
-      thinking: False
-
+      thinking: true
+  model_name: deepseek-ai/deepseek-v4-pro
 sources:
-  rss: 
-    - "https://techcrunch.com/category/artificial-intelligence/feed/"
-  subreddits: 
-    - "singularity"
+  rss:  
+  - https://techcrunch.com/category/artificial-intelligence/feed/
+  subreddits:
+  - singularity
