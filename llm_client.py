@@ -90,6 +90,9 @@ def generate_tweet_text(post: dict, rewrite: bool = False) -> str:
     niche = bot_config.get("niche", "Artificial Intelligence")
     tone = bot_config.get("tone_of_voice", "Expert blogger")
     target_language = "Russian" if bot_config.get("language") == "ru" else "English"
+    max_length = int(bot_config.get("max_length", 280))
+    text_limit = max_length - 23 # Twitter counts URLs as 23 chars
+    llm_max_tokens = max(150, (max_length // 4) + 100)
     
     title = post.get('title', '')
     text = post.get('text', '')
@@ -106,7 +109,7 @@ Your goal is to write a highly engaging, viral, and concise post based on the pr
 Tone of Voice: {tone}
 
 CRITICAL RULES:
-1. LENGTH LIMIT: Write a highly detailed and comprehensive post maximizing the available space. Aim for exactly 250-260 characters! DO NOT leave hanging sentences. Finish your thought naturally!
+1. LENGTH LIMIT: Write a highly detailed and comprehensive post maximizing the available space. Aim for exactly {max(1, text_limit - 10)}-{text_limit} characters! DO NOT leave hanging sentences. Finish your thought naturally!
 2. FORMATTING: Use X-style formatting. Keep paragraphs to 1-2 short sentences. Use line breaks for readability. Do not output a single wall of text.
 3. HOOK: Start with a powerful, scroll-stopping hook. Do not use cliché openings like "Breaking News:", "Did you know?", or "In a shocking turn of events".
 4. EMOJIS: Use a maximum of 1 or 2 relevant emojis. Do not overdo it.
@@ -139,7 +142,7 @@ CRITICAL RULES:
             "messages": [{"role":"user","content": prompt}],
             "temperature": 0.7,
             "top_p": 0.95,
-            "max_tokens": 150,
+            "max_tokens": llm_max_tokens,
             "stream": False
         }
         if "extra_body" in llm_config:
@@ -154,14 +157,14 @@ CRITICAL RULES:
         tweet = re.sub(r'\_(.*?)\_', r'\1', tweet)
         tweet = tweet.replace('<br>', '\n').replace('<br/>', '\n')
         
-        # Enforce strict text length before adding URL (max 257 to allow space for 23-char link)
-        if len(tweet) > 257:
-            match = re.search(r'(?s:.*)[.!?]', tweet[:257])
+        # Enforce strict text length before adding URL
+        if len(tweet) > text_limit:
+            match = re.search(r'(?s:.*)[.!?]', tweet[:text_limit])
             # If truncating by sentence loses too much text (e.g. > 40 chars), fallback to word truncation
-            if match and len(match.group(0)) > 215:
+            if match and len(match.group(0)) > text_limit - 42:
                 tweet = match.group(0)
             else:
-                tweet = tweet[:254].rsplit(' ', 1)[0] + "..."
+                tweet = tweet[:text_limit - 3].rsplit(' ', 1)[0] + "..."
                 
         # Append Source URL if available
         url = post.get('url')

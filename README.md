@@ -72,6 +72,7 @@ An autonomous Python bot for Twitter (X) that researches a niche, picks the best
      niche: "Artificial Intelligence"
      tone_of_voice: "Expert AI blogger, concise and professional"
      mode: "auto"
+     max_length: 280 # Set to 25000 if you have X Premium
      interval: [3600, 10800]  # Random interval between 1h and 3h
 
    llm:
@@ -79,6 +80,7 @@ An autonomous Python bot for Twitter (X) that researches a niche, picks the best
      model_name: "deepseek-ai/deepseek-v4-pro"
    ```
    - **Language:** Interface and tweet language.
+   - **Max Length:** Max characters for your tweets (280 for free users, up to 25000 for Premium).
    - **Niche & Tone:** What the bot talks about and how it sounds.
    - **Mode:** `auto` (discovers sources) or `manual` (your own list).
    - **LLM:** Set `base_url` and `model_name` (e.g. `https://api.openai.com/v1` and `gpt-4o`).
