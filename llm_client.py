@@ -89,6 +89,7 @@ def generate_tweet_text(post: dict, rewrite: bool = False) -> str:
     bot_config = config.get("bot", {})
     niche = bot_config.get("niche", "Artificial Intelligence")
     tone = bot_config.get("tone_of_voice", "Expert blogger")
+    target_language = "Russian" if bot_config.get("language") == "ru" else "English"
     
     title = post.get('title', '')
     text = post.get('text', '')
@@ -111,6 +112,7 @@ CRITICAL RULES:
 4. EMOJIS: Use a maximum of 1 or 2 relevant emojis. Do not overdo it.
 5. NO HASHTAGS & NO LINKS: Do not use hashtags. Do NOT include any URLs or links in your text (they will be added automatically later).
 6. OUTPUT: ONLY output the final tweet text. No introductory phrases, no quotation marks around the tweet, no meta-commentary.
+7. LANGUAGE: Write the entire tweet strictly in {target_language}.
 """
     
     if os.path.exists("post_history.json"):

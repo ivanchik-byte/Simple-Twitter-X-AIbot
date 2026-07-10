@@ -15,6 +15,7 @@ import html
 load_dotenv()
 
 from parser import get_new_posts, mark_posted
+from i18n import t
 from media_manager import process_media
 from llm_client import generate_tweet_text, select_best_post
 from twitter_client import post_tweet
@@ -197,7 +198,7 @@ async def force_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         return
         
-    await update.message.reply_text("🔄 Forcing an immediate news check. This might take a minute...")
+    await update.message.reply_text(t("msg_forcing"))
     await check_news(context, manual=True)
 
 async def update_config(update: Update, key: str, value: str):
@@ -277,7 +278,7 @@ async def set_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
     update_config_value("active", False)
-    await update.message.reply_text("⏸ <b>Bot Paused.</b> News checking suspended.", parse_mode='HTML')
+    await update.message.reply_text(t("msg_bot_paused_main"), parse_mode='HTML')
 
 async def toggle_auto_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
@@ -286,9 +287,9 @@ async def toggle_auto_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_val = not current
     update_config_value("auto_post", new_val)
     if new_val:
-        await update.message.reply_text("✅ <b>Auto Post: ON</b> (No approval required)", parse_mode='HTML')
+        await update.message.reply_text(t("msg_auto_on"), parse_mode='HTML')
     else:
-        await update.message.reply_text("❌ <b>Auto Post: OFF</b> (Manual approval required)", parse_mode='HTML')
+        await update.message.reply_text(t("msg_auto_off"), parse_mode='HTML')
 
 async def clear_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
@@ -300,7 +301,7 @@ async def clear_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_queue_item(bot, chat_id, index: int):
     if not pending_posts:
-        await bot.send_message(chat_id=chat_id, text="📭 Post queue is empty.")
+        await bot.send_message(chat_id=chat_id, text=t("msg_empty_queue"))
         return
         
     keys = list(pending_posts.keys())
@@ -312,24 +313,24 @@ async def send_queue_item(bot, chat_id, index: int):
     
     keyboard = [
         [
-            InlineKeyboardButton("✅ Approve", callback_data=f"app_{url_key}"),
-            InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}")
+            InlineKeyboardButton(t("btn_approve"), callback_data=f"app_{url_key}"),
+            InlineKeyboardButton(t("btn_reject"), callback_data=f"rej_{url_key}")
         ],
         [
-            InlineKeyboardButton("🔄 Rewrite", callback_data=f"rew_{url_key}"),
-            InlineKeyboardButton("⏸ Turn Off", callback_data=f"off_{url_key}")
+            InlineKeyboardButton(t("btn_rewrite"), callback_data=f"rew_{url_key}"),
+            InlineKeyboardButton(t("btn_turn_off"), callback_data=f"off_{url_key}")
         ],
         [
-            InlineKeyboardButton("⬅️ Prev", callback_data=f"qpr_{index}"),
+            InlineKeyboardButton(t("btn_prev"), callback_data=f"qpr_{index}"),
             InlineKeyboardButton(f"{index + 1}/{len(keys)}", callback_data="noop"),
-            InlineKeyboardButton("Next ➡️", callback_data=f"qnx_{index}")
+            InlineKeyboardButton(t("btn_next"), callback_data=f"qnx_{index}")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     safe_title = html.escape(post['title'])
     safe_tweet = html.escape(post['generated_tweet'])
-    message_text = f"📰 <b>Queued Post:</b>\n{safe_title}\n\n📝 <b>Generated Tweet:</b>\n{safe_tweet}"
+    message_text = t("msg_queued_post", title=safe_title, tweet=safe_tweet)
     
     img_path = os.path.join(IMAGES_DIR, f"{url_key}.jpg")
     if os.path.exists(img_path):
@@ -435,10 +436,10 @@ async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update): return
     history = load_post_history()
     if not history:
-        await update.message.reply_text("📭 Post history is empty.")
+        await update.message.reply_text(t("msg_empty_history"))
         return
         
-    text = "📜 <b>Last 5 Published Posts:</b>\n\n"
+    text = t("msg_history_header")
     for idx, item in enumerate(history[:5]):
         text += f"🕒 <code>{item['time']}</code>\n📝 {item['text']}\n\n"
         
@@ -513,7 +514,7 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
                 
         if not filtered_posts:
             if manual:
-                await context.bot.send_message(chat_id=chat_id, text="ℹ️ No new unposted news found.")
+                await context.bot.send_message(chat_id=chat_id, text=t("msg_no_news"))
         else:
             logger.info(f"Selecting best post from {len(filtered_posts)} items...")
             best_post = await asyncio.to_thread(select_best_post, filtered_posts)
@@ -547,10 +548,10 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
                     safe_tweet = html.escape(best_post['generated_tweet'])
                     
                     await asyncio.to_thread(mark_posted, best_post['url'], best_post['source'])
-                    await context.bot.send_message(chat_id=chat_id, text=f"✅ <b>Automatically Posted:</b>\n{safe_title}\n\n{safe_tweet}", parse_mode='HTML')
+                    await context.bot.send_message(chat_id=chat_id, text=t("msg_auto_posted", title=safe_title, tweet=safe_tweet), parse_mode='HTML')
                 else:
                     safe_title = html.escape(best_post['title'])
-                    await context.bot.send_message(chat_id=chat_id, text=f"⚠️ <b>Auto Post Failed:</b>\n{safe_title}", parse_mode='HTML')
+                    await context.bot.send_message(chat_id=chat_id, text=t("msg_auto_failed", title=safe_title), parse_mode='HTML')
                 
                 if 'final_image_bytes' in best_post and os.path.exists(img_path):
                     os.remove(img_path)
@@ -564,19 +565,19 @@ async def check_news(context: ContextTypes.DEFAULT_TYPE, manual=False):
                 
                 keyboard = [
                     [
-                        InlineKeyboardButton("✅ Approve", callback_data=f"app_{url_key}"),
-                        InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}")
+                        InlineKeyboardButton(t("btn_approve"), callback_data=f"app_{url_key}"),
+                        InlineKeyboardButton(t("btn_reject"), callback_data=f"rej_{url_key}")
                     ],
                     [
-                        InlineKeyboardButton("🔄 Rewrite", callback_data=f"rew_{url_key}"),
-                        InlineKeyboardButton("⏸ Turn Off", callback_data=f"off_{url_key}")
+                        InlineKeyboardButton(t("btn_rewrite"), callback_data=f"rew_{url_key}"),
+                        InlineKeyboardButton(t("btn_turn_off"), callback_data=f"off_{url_key}")
                     ]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 safe_title = html.escape(best_post['title'])
                 safe_tweet = html.escape(tweet_text)
-                message_text = f"📰 <b>New Post:</b>\n{safe_title}\n\n📝 <b>Generated Tweet:</b>\n{safe_tweet}"
+                message_text = t("msg_new_post", title=safe_title, tweet=safe_tweet)
                 
                 if best_post.get('final_image_bytes'):
                     await context.bot.send_photo(
@@ -700,7 +701,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.job_queue.run_once(trigger_manual_check, 1)
             
     elif action == "rew":
-        await query.answer("Rewriting tweet...")
+        await query.answer(t("msg_rewriting"))
         new_text = await asyncio.to_thread(generate_tweet_text, post, rewrite=True)
         post['generated_tweet'] = new_text
         pending_posts[url_key] = post
@@ -727,8 +728,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "app" and success is False:
         keyboard = [
             [
-                InlineKeyboardButton("✅ Retry Approve", callback_data=f"app_{url_key}"),
-                InlineKeyboardButton("❌ Reject", callback_data=f"rej_{url_key}")
+                InlineKeyboardButton(t("btn_retry"), callback_data=f"app_{url_key}"),
+                InlineKeyboardButton(t("btn_reject"), callback_data=f"rej_{url_key}")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -745,7 +746,7 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not is_admin(update): return
     text = update.message.text
     
-    if text == "🔍 Find News":
+    if text == t("btn_find_news"):
         await force_check(update, context)
     elif text == "📦 My Queue":
         await show_queue(update, context)
@@ -754,13 +755,13 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         active = config.get("bot", {}).get("active", True)
         update_config_value("active", not active)
         if not active:
-            await update.message.reply_text("▶️ <b>Bot Resumed.</b>", parse_mode='HTML')
+            await update.message.reply_text(t("msg_bot_resumed"), parse_mode='HTML')
             context.job_queue.run_once(trigger_manual_check, 1)
         else:
-            await update.message.reply_text("⏸ <b>Bot Paused.</b>", parse_mode='HTML')
+            await update.message.reply_text(t("msg_bot_paused_main"), parse_mode='HTML')
     elif text == "🤖 Auto-Post: ON/OFF":
         await toggle_auto_post(update, context)
-    elif text == "⚙️ Settings":
+    elif text == t("btn_settings"):
         keyboard = [
             [InlineKeyboardButton("📝 Edit Prompt", callback_data="set_prompt"), InlineKeyboardButton("⏱ Interval", callback_data="set_interval")],
             [InlineKeyboardButton("🎯 Edit Niche", callback_data="set_niche"), InlineKeyboardButton("🤖 Toggle Mode", callback_data="set_mode")]

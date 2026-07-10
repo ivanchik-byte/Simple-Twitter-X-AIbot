@@ -1,5 +1,7 @@
 # Simple AI Twitter Bot
 
+[🇷🇺 Читать на русском](README_ru.md) | [🇬🇧 English](README.md)
+
 An autonomous Python-based Twitter (X) bot that researches a specific niche, curates relevant news, generates tweets using Large Language Models (LLMs), and publishes them. The bot is managed entirely through a Telegram Bot interface, offering a queue system and manual approval workflows.
 
 ## Key Features
@@ -15,6 +17,7 @@ An autonomous Python-based Twitter (X) bot that researches a specific niche, cur
 - **Model Agnostic:** Compatible with any OpenAI-compatible API, including OpenAI, Anthropic (via OpenRouter), DeepSeek, or local Ollama instances.
 - **Auto / Manual Modes:** Can automatically discover RSS feeds and subreddits based on a defined niche, or strictly follow a manually defined list of sources.
 - **Auto-Post Mode:** Includes an autonomous mode (`/noaccept`) that bypasses the manual approval queue and publishes the best news on its own schedule.
+- **Bilingual Support:** Interfaces and tweet generation fully support English (`en`) and Russian (`ru`). Set language via `/set_lang` or config.
 
 ---
 
@@ -65,6 +68,7 @@ An autonomous Python-based Twitter (X) bot that researches a specific niche, cur
 2. **Bot Settings (`config.yaml`):**
    ```yaml
    bot:
+     language: "en" # "en" or "ru"
      niche: "Artificial Intelligence"
      tone_of_voice: "Expert AI blogger, concise and professional"
      mode: "auto"
@@ -74,6 +78,7 @@ An autonomous Python-based Twitter (X) bot that researches a specific niche, cur
      base_url: "https://integrate.api.nvidia.com/v1"
      model_name: "deepseek-ai/deepseek-v4-pro"
    ```
+   - **Language:** Interface and tweet language.
    - **Niche & Tone:** Define the content focus and writing style.
    - **Mode:** `auto` (auto-discovers sources) or `manual` (uses defined sources).
    - **LLM:** Configure the endpoint by setting `base_url` and `model_name` (e.g., `https://api.openai.com/v1` and `gpt-4o`).
@@ -95,6 +100,7 @@ Once running, interact with the bot via Telegram using the built-in keyboard men
 - `/queue` - View pending posts awaiting approval.
 - `/history` - View the last 5 published tweets.
 - `/noaccept` - Toggle Auto-Post mode (publish without manual approval).
+- `/set_lang <en|ru>` - Switch the bot's language.
 - `/set_interval <min> [max]` - Set checking intervals (e.g., `/set_interval 1h 3h`).
 - `/set_niche <name>` - Update the target niche.
 - `/set_mode <auto|manual>` - Switch between automatic source discovery and manual sources.
